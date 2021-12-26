@@ -2,7 +2,9 @@ from facade import *
 
 class AbstractProcessor:
     next_processor = None
-    facade = Facade()
+
+    def __init__(self, cache):
+        self.facade = Facade(cache)
 
     def set_next(self, processor):
         self.next_processor = processor
