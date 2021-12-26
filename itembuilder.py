@@ -1,6 +1,17 @@
 import requests
 from specification import *
+from flask_restful import reqparse
 from itemsdb import ItemsDB
+import multiprocessing
+from functools import partial
+from itertools import repeat
+import time
+
+def filter_element(parsed_args, item):
+    item_filter = CompositeFilter(ProductName(), MinQuantity(), SupplierID())
+    if item_filter.satisfies_filters(item, parsed_args):
+        return item
+    return None   
 
 class Items:
     def __init__(self):
@@ -18,14 +29,29 @@ class Items:
     
     def set(self, new_items):
         self.items = new_items
-    
+
     def filter(self):
-        item_filter = CompositeFilter(ProductName(), MinQuantity(), SupplierID())
-        filtered_items = []
-        for item in self.items:
-            if item_filter.satisfies_filters(item):
-                filtered_items.append(item)
-        self.items = filtered_items
+        #item_filter = CompositeFilter(ProductName(), MinQuantity(), SupplierID())
+        parser = reqparse.RequestParser()
+        parser.add_argument('item_name')
+        parser.add_argument('min_quantity')
+        parser.add_argument('supplier_id')
+        parsed_args = parser.parse_args()
+        start_time = time.time()
+        with multiprocessing.Pool(4) as pool:
+            #new_items = pool.starmap(filter_element, zip(self.items, repeat(parsed_args), repeat(item_filter)))
+            new_items = pool.map(partial(filter_element, parsed_args), self.items)  
+        new_items = [x for x in new_items if x]
+        print(f'Filtering took {time.time() - start_time} seconds')
+        return new_items
+
+        #start_time = time.time()
+        #filtered_items = []
+        #for item in self.items:
+        #    if item_filter.satisfies_filters(item, self.parsed_args):
+        #        filtered_items.append(item)
+        #print(time.time() - start_time)
+        #return filtered_items
         
 
 class AbstractItemBuilder:
@@ -51,7 +77,7 @@ class FirstServiceItemBuilder(AbstractItemBuilder):
         self.item.set(requests.get('http://127.0.0.1:5001/search/').json()['items'])
 
     def filter(self):
-        self.item.filter()
+        self.item.set(self.item.filter())
 
 class SecondServiceItemBuilder(AbstractItemBuilder):
     def __init__(self):
@@ -63,7 +89,10 @@ class SecondServiceItemBuilder(AbstractItemBuilder):
         return t_item
 
     def get_from_source(self):
-        items_partial = requests.get('http://127.0.0.1:5002/price-list/').json()['items']
+        items_partial = []
+        for page in range(1, 2):
+            items_paged = requests.get(f'http://127.0.0.1:5002/price-list?page={page}').json()['items']
+            items_partial = items_partial + items_paged
         items_full = []
         for item in items_partial:
             response = requests.get('http://127.0.0.1:5002/details/' + str(item['item_id'])).json()
@@ -74,7 +103,7 @@ class SecondServiceItemBuilder(AbstractItemBuilder):
         ## Fix this
 
     def filter(self):
-        self.item.filter()
+        self.item.set(self.item.filter())
 
 class DatabaseItemBuilder(AbstractItemBuilder):
     def __init__(self):
@@ -95,7 +124,7 @@ class DatabaseItemBuilder(AbstractItemBuilder):
         self.item.set(items_transformed)
 
     def filter(self):
-        self.item.filter()
+        self.item.set(self.item.filter())
 
 class BuilderManager:
     def __init__(self):
@@ -109,5 +138,5 @@ class BuilderManager:
     
     def build(self):
         self.builder.get_from_source()
-        self.builder.filter()
+        #self.builder.filter()
     
