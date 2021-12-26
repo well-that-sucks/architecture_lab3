@@ -2,24 +2,13 @@ from itembuilder import *
 from flask_restful import reqparse
 
 class Facade:
-    def __init__(self):
+    def __init__(self, cache):
         self.items_db = ItemsDB()
+        self.cache = cache
 
     def get(self):
-        builder_manager = BuilderManager()
-        builder = DatabaseItemBuilder()
-        builder_manager.set_builder(builder)
-        builder_manager.build()
-        items_from_db = builder.get_items()
-        builder = FirstServiceItemBuilder()
-        builder_manager.set_builder(builder)
-        builder_manager.build()
-        items_from_service1 = builder.get_items()
-        builder = SecondServiceItemBuilder()
-        builder_manager.set_builder(builder)
-        builder_manager.build()
-        items_from_service2 = builder.get_items()
-        return items_from_db.add_items(items_from_service1).add_items(items_from_service2).items
+        return self.cache.get_cache()
+
 
     def update(self):
         reqparser = reqparse.RequestParser()
